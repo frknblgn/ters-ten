@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>TERS-TEN</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="brand-ters">TERS</span><span class="brand-arrow">⇄</span><span class="brand-ten">TEN</span></div>
+  <div id="topbar-room" class="topbar-room hidden">
+    <span class="label">ODA</span>
+    <span id="topbar-room-code" class="room-code-chip">------</span>
+  </div>
+  <div class="topbar-actions">
+    <button id="btn-mic-test-top" class="btn btn-ghost hidden">🎙 Mikrofon</button>
+    <button id="btn-leave" class="btn btn-ghost hidden">⏻ Çıkış</button>
+  </div>
+</header>
+
+<main id="app">
+
+  <!-- HOME SCREEN -->
+  <section id="screen-home" class="screen">
+    <div class="panel panel-narrow">
+      <h1>Tersten'e Hoş Geldin</h1>
+      <p class="muted">Bir oda kur ya da arkadaşlarından aldığın davet koduyla katıl. Üyelik gerekmez.</p>
+
+      <div class="field">
+        <label for="input-name">Adın</label>
+        <input id="input-name" maxlength="24" placeholder="Rumuzun" autocomplete="off" />
+      </div>
+
+      <div class="home-grid">
+        <div class="home-card">
+          <h3>Yeni Oda Kur</h3>
+          <button id="btn-create-room" class="btn btn-primary btn-block">Oda Oluştur</button>
+        </div>
+        <div class="home-card">
+          <h3>Odaya Katıl</h3>
+          <input id="input-join-code" maxlength="6" placeholder="ODA KODU" autocomplete="off" class="input-code" />
+          <button id="btn-join-room" class="btn btn-secondary btn-block">Katıl</button>
+        </div>
+      </div>
+      <p id="home-error" class="error-text hidden"></p>
+    </div>
+  </section>
+
+  <!-- LOBBY SCREEN -->
+  <section id="screen-lobby" class="screen hidden">
+    <div class="lobby-header panel">
+      <div class="lobby-header-row">
+        <div>
+          <div class="eyebrow">ODA DAVET KODU</div>
+          <div id="lobby-room-code" class="big-code">------</div>
+        </div>
+        <div class="lobby-header-actions">
+          <button id="btn-copy-code" class="btn btn-ghost">📋 Kodu Kopyala</button>
+          <button id="btn-copy-link" class="btn btn-accent">🔗 Davet Bağlantısını Kopyala</button>
+          <button id="btn-mic-test" class="btn btn-success">🎙 Mikrofonunu Test Et</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="lobby-grid">
+      <div class="panel">
+        <div class="panel-title-row">
+          <h2>Bağlı Oyuncular (<span id="player-count">0</span> / 10)</h2>
+          <span id="ready-count-chip" class="chip">0/0 Hazır</span>
+        </div>
+        <div id="player-list" class="player-list"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Oyun Ayarları</h2>
+
+        <div class="settings-block">
+          <div class="settings-row-head">
+            <span>Kişi Başı Anlatıcılık</span>
+            <span id="turns-summary" class="muted small"></span>
+          </div>
+          <div id="narrations-options" class="choice-row"></div>
+          <p class="muted small">Herkes bir kez anlatıcı olmadan kimse ikinci kez anlatıcı olmaz.</p>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-row-head"><span>Tur Süreleri</span></div>
+          <div id="timing-options" class="choice-row choice-row-wide"></div>
+          <p id="timing-summary" class="muted small"></p>
+        </div>
+
+        <div id="host-controls" class="hidden">
+          <button id="btn-start-game" class="btn btn-primary btn-block" disabled>Oyunu Başlat</button>
+          <p id="start-hint" class="muted small"></p>
+        </div>
+        <div id="guest-ready-controls">
+          <button id="btn-toggle-ready" class="btn btn-success btn-block">✓ Hazırım!</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GAME SCREEN -->
+  <section id="screen-game" class="screen hidden">
+    <div class="panel game-topline">
+      <div><span class="eyebrow">TUR</span> <span id="game-turn-label">-</span></div>
+      <div class="timer-wrap"><div id="game-timer-bar" class="timer-bar"></div><span id="game-timer-text">--</span></div>
+      <div><span class="eyebrow">ANLATICI</span> <span id="game-narrator-label">-</span></div>
+    </div>
+
+    <div class="panel game-main">
+
+      <div id="phase-waiting" class="game-phase">
+        <p class="big-emoji">⏳</p>
+        <p id="waiting-text" class="muted">Sıra bekleniyor...</p>
+      </div>
+
+      <div id="phase-narrator" class="game-phase hidden">
+        <div class="eyebrow">SIRA SENDE — YÜKSEK SESLE OKU</div>
+        <div id="celebrity-name" class="celebrity-name">-</div>
+        <button id="btn-record-narration" class="btn btn-record">🔴 Kaydı Başlat</button>
+        <p id="narrator-status" class="muted small"></p>
+      </div>
+
+      <div id="phase-listen-reversed" class="game-phase hidden">
+        <div class="eyebrow">TERSTEN SESİ DİNLE</div>
+        <p class="muted">Anlatıcının söylediği ismin tersten versiyonunu duyacaksın. Dikkatle dinle!</p>
+        <button id="btn-replay-reversed" class="btn btn-secondary">🔁 Tekrar Dinle</button>
+      </div>
+
+      <div id="phase-mimic" class="game-phase hidden">
+        <div class="eyebrow">DUYDUĞUN GİBİ TEKRARLA (TERSTEN)</div>
+        <p class="muted">Duyduğun sesi birebir taklit etmeye çalış, aynı şekilde kaydet.</p>
+        <button id="btn-record-mimic" class="btn btn-record">🔴 Taklit Kaydını Başlat</button>
+        <p id="mimic-status" class="muted small"></p>
+      </div>
+
+      <div id="phase-guess" class="game-phase hidden">
+        <div class="eyebrow">DÜZ VERSİYONU DİNLEDİN — NE DUYDUN?</div>
+        <button id="btn-replay-mimic" class="btn btn-secondary">🔁 Kendi Kaydını Dinle</button>
+        <div class="guess-form">
+          <input id="input-guess" placeholder="Duyduğun ismi yaz..." autocomplete="off" />
+          <button id="btn-submit-guess" class="btn btn-primary">Gönder</button>
+        </div>
+        <p id="guess-status" class="muted small"></p>
+      </div>
+
+      <div id="phase-result" class="game-phase hidden">
+        <div class="eyebrow">DOĞRU CEVAP</div>
+        <div id="result-answer" class="celebrity-name">-</div>
+        <div id="result-list" class="result-list"></div>
+        <p class="muted small">Sıradaki tur birazdan başlayacak...</p>
+      </div>
+
+    </div>
+
+    <div class="panel scoreboard">
+      <h3>Skor Tablosu</h3>
+      <div id="scoreboard-list" class="scoreboard-list"></div>
+    </div>
+  </section>
+
+  <!-- END SCREEN -->
+  <section id="screen-end" class="screen hidden">
+    <div class="panel panel-narrow">
+      <h1>Oyun Bitti 🎉</h1>
+      <div id="final-scoreboard" class="scoreboard-list"></div>
+      <button id="btn-back-to-lobby" class="btn btn-primary btn-block hidden">Lobiye Dön</button>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
