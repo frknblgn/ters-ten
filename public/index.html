@@ -108,6 +108,7 @@
       <div><span class="eyebrow">TUR</span> <span id="game-turn-label">-</span></div>
       <div class="timer-wrap"><div id="game-timer-bar" class="timer-bar"></div><span id="game-timer-text">--</span></div>
       <div><span class="eyebrow">ANLATICI</span> <span id="game-narrator-label">-</span></div>
+      <button id="btn-reset-lobby-game" class="btn btn-ghost hidden">🔄 Lobiyi Sıfırla</button>
     </div>
 
     <div class="panel game-main">
@@ -121,6 +122,13 @@
         <div class="eyebrow">SIRA SENDE — YÜKSEK SESLE OKU</div>
         <div id="celebrity-name" class="celebrity-name">-</div>
         <button id="btn-record-narration" class="btn btn-record">🔴 Kaydı Başlat</button>
+        <div id="narration-grace" class="hidden">
+          <p class="muted small">Kayıt tamam! <strong id="narration-grace-seconds">5</strong> saniye içinde otomatik gönderilecek.</p>
+          <div class="guess-form">
+            <button id="btn-rerecord-narration" class="btn btn-secondary">🔁 Tekrar Kaydet</button>
+            <button id="btn-send-now-narration" class="btn btn-primary">✓ Şimdi Gönder</button>
+          </div>
+        </div>
         <p id="narrator-status" class="muted small"></p>
       </div>
 
@@ -148,6 +156,7 @@
       </div>
 
       <div id="phase-result" class="game-phase hidden">
+        <div id="result-celebration" class="result-celebration hidden">🎉</div>
         <div class="eyebrow">DOĞRU CEVAP</div>
         <div id="result-answer" class="celebrity-name">-</div>
         <div id="result-list" class="result-list"></div>

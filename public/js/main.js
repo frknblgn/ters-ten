@@ -41,11 +41,16 @@
     gameNarratorLabel: $("#game-narrator-label"),
     gameTimerBar: $("#game-timer-bar"),
     gameTimerText: $("#game-timer-text"),
+    btnResetLobbyGame: $("#btn-reset-lobby-game"),
     phaseWaiting: $("#phase-waiting"),
     waitingText: $("#waiting-text"),
     phaseNarrator: $("#phase-narrator"),
     celebrityName: $("#celebrity-name"),
     btnRecordNarration: $("#btn-record-narration"),
+    narrationGrace: $("#narration-grace"),
+    narrationGraceSeconds: $("#narration-grace-seconds"),
+    btnRerecordNarration: $("#btn-rerecord-narration"),
+    btnSendNowNarration: $("#btn-send-now-narration"),
     narratorStatus: $("#narrator-status"),
     phaseListenReversed: $("#phase-listen-reversed"),
     btnReplayReversed: $("#btn-replay-reversed"),
@@ -58,6 +63,7 @@
     btnSubmitGuess: $("#btn-submit-guess"),
     guessStatus: $("#guess-status"),
     phaseResult: $("#phase-result"),
+    resultCelebration: $("#result-celebration"),
     resultAnswer: $("#result-answer"),
     resultList: $("#result-list"),
     scoreboardList: $("#scoreboard-list"),
@@ -340,10 +346,14 @@
 
     const me = room.players.find((p) => p.id === myId);
     if (me) {
-      el.btnToggleReady.textContent = me.ready ? "✓ Hazırım!" : "Hazır Değilim";
-      el.btnToggleReady.classList.toggle("btn-success", me.ready);
-      el.btnToggleReady.classList.toggle("btn-secondary", !me.ready);
+      // Button label is the action it performs: not ready yet -> offer to mark ready;
+      // already ready -> offer to undo.
+      el.btnToggleReady.textContent = me.ready ? "Hazır Değilim" : "✓ Hazırım!";
+      el.btnToggleReady.classList.toggle("btn-success", !me.ready);
+      el.btnToggleReady.classList.toggle("btn-secondary", me.ready);
     }
+
+    el.btnResetLobbyGame.classList.toggle("hidden", !isHost || room.state !== "playing");
 
     const allOthersReady = room.players.filter((p) => p.id !== room.hostId).every((p) => p.ready);
     const enoughPlayers = room.players.length >= 2;
@@ -364,11 +374,18 @@
     }
   }
 
+  let lastScores = {};
   function renderScoreboard(room) {
     const sorted = [...room.players].sort((a, b) => b.score - a.score);
     el.scoreboardList.innerHTML = sorted
-      .map((p, i) => `<div class="score-row"><span><span class="rank">#${i + 1}</span>${escapeHtml(p.name)}</span><strong>${p.score}</strong></div>`)
+      .map((p, i) => {
+        const popped = lastScores[p.id] !== undefined && p.score > lastScores[p.id];
+        return `<div class="score-row${popped ? " score-pop" : ""}" data-player-id="${p.id}"><span><span class="rank">#${i + 1}</span>${escapeHtml(p.name)}</span><strong>${p.score}</strong></div>`;
+      })
       .join("");
+    const next = {};
+    sorted.forEach((p) => { next[p.id] = p.score; });
+    lastScores = next;
   }
 
   el.btnToggleReady.addEventListener("click", () => {
@@ -377,6 +394,11 @@
   });
 
   el.btnStartGame.addEventListener("click", () => socket.emit("room:startGame"));
+
+  el.btnResetLobbyGame.addEventListener("click", () => {
+    if (!confirm("Oyunu durdurup herkesi lobiye döndürmek istiyor musun? Skorlar sıfırlanacak.")) return;
+    socket.emit("room:returnToLobby");
+  });
 
   // ---------- SOCKET EVENTS ----------
   socket.on("connect", () => { myId = socket.id; });
@@ -408,32 +430,118 @@
     el.phaseWaiting.classList.add("hidden");
     el.phaseNarrator.classList.remove("hidden");
     el.celebrityName.textContent = celebrity;
-    el.narratorStatus.textContent = "Hazır olduğunda kayda bas.";
+    el.narrationGrace.classList.add("hidden");
+    el.btnRecordNarration.classList.remove("hidden");
     el.btnRecordNarration.disabled = false;
+    el.btnRecordNarration.classList.remove("recording");
     el.btnRecordNarration.textContent = "🔴 Kaydı Başlat";
+    el.narratorStatus.textContent = "Hazır olduğunda kayda bas.";
 
-    const narrateMs = currentRoom.settings.timing.narrate * 1000;
-    el.btnRecordNarration.onclick = async () => {
-      el.btnRecordNarration.disabled = true;
+    let graceInterval = null;
+    let finalized = false;
+
+    function clearGrace() {
+      if (graceInterval) clearInterval(graceInterval);
+      graceInterval = null;
+      el.narrationGrace.classList.add("hidden");
+    }
+
+    async function beginRecording() {
+      clearGrace();
+      el.btnRecordNarration.classList.remove("hidden");
+      el.btnRecordNarration.disabled = false;
       el.btnRecordNarration.classList.add("recording");
-      el.btnRecordNarration.textContent = "🔴 Kaydediliyor...";
-      el.narratorStatus.textContent = "Konuş! Süre dolunca otomatik gönderilecek.";
+      el.btnRecordNarration.textContent = "⏹ Kaydı Bitir";
+      el.btnRecordNarration.onclick = stopRecordingClick;
+      el.narratorStatus.textContent = "Konuşuyorsun... bitirince durdur.";
+
+      let stream;
       try {
-        const stream = await TersAudio.getMicStream();
-        const { wav } = await TersAudio.recordAndReverse(stream, narrateMs);
-        socket.emit("turn:submitNarration", { audio: wav, mimeType: "audio/wav" });
-        el.narratorStatus.textContent = "Gönderildi! Diğerlerinin cevabı bekleniyor...";
-        el.btnRecordNarration.classList.remove("recording");
-        el.phaseNarrator.classList.add("hidden");
-        el.phaseWaiting.classList.remove("hidden");
-        el.waitingText.textContent = "Kaydın gönderildi, diğer oyuncular tahmin ediyor...";
+        stream = await TersAudio.getMicStream();
       } catch (e) {
         el.narratorStatus.textContent = "Mikrofon hatası: " + (e.message || e);
         el.btnRecordNarration.disabled = false;
         el.btnRecordNarration.classList.remove("recording");
         el.btnRecordNarration.textContent = "🔴 Kaydı Başlat";
+        el.btnRecordNarration.onclick = beginRecording;
+        return;
       }
-    };
+
+      const capMs = Math.max(3000, deadline - Date.now());
+      TersAudio.recordFor(stream, capMs)
+        .then(onRecordingStopped)
+        .catch((e) => {
+          el.narratorStatus.textContent = "Kayıt hatası: " + (e.message || e);
+          el.btnRecordNarration.disabled = false;
+          el.btnRecordNarration.classList.remove("recording");
+          el.btnRecordNarration.textContent = "🔴 Kaydı Başlat";
+          el.btnRecordNarration.onclick = beginRecording;
+        });
+    }
+
+    async function onRecordingStopped(blob) {
+      if (finalized) return;
+      el.btnRecordNarration.disabled = true;
+      el.btnRecordNarration.textContent = "⏳ İşleniyor...";
+      let wav;
+      try {
+        const buffer = await TersAudio.blobToAudioBuffer(blob);
+        const reversed = TersAudio.reverseBuffer(buffer);
+        wav = TersAudio.audioBufferToWav(reversed);
+      } catch (e) {
+        el.narratorStatus.textContent = "Ses işlenemedi, tekrar dene.";
+        el.btnRecordNarration.disabled = false;
+        el.btnRecordNarration.classList.remove("recording");
+        el.btnRecordNarration.textContent = "🔴 Kaydı Başlat";
+        el.btnRecordNarration.onclick = beginRecording;
+        return;
+      }
+      showGrace(wav);
+    }
+
+    function stopRecordingClick() {
+      TersAudio.stopRecording();
+      el.btnRecordNarration.disabled = true;
+      el.btnRecordNarration.textContent = "⏳ İşleniyor...";
+    }
+
+    function showGrace(wav) {
+      el.btnRecordNarration.classList.add("hidden");
+      el.narrationGrace.classList.remove("hidden");
+      el.narratorStatus.textContent = "";
+
+      let remaining = 5;
+      el.narrationGraceSeconds.textContent = remaining;
+      graceInterval = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearGrace();
+          finalizeSend(wav);
+        } else {
+          el.narrationGraceSeconds.textContent = remaining;
+        }
+      }, 1000);
+
+      el.btnSendNowNarration.onclick = () => {
+        clearGrace();
+        finalizeSend(wav);
+      };
+      el.btnRerecordNarration.onclick = () => {
+        clearGrace();
+        beginRecording();
+      };
+    }
+
+    function finalizeSend(wav) {
+      if (finalized) return;
+      finalized = true;
+      socket.emit("turn:submitNarration", { audio: wav, mimeType: "audio/wav" });
+      el.phaseNarrator.classList.add("hidden");
+      el.phaseWaiting.classList.remove("hidden");
+      el.waitingText.textContent = "Kaydın gönderildi, diğer oyuncular dinleyip tahmin ediyor...";
+    }
+
+    el.btnRecordNarration.onclick = beginRecording;
   });
 
   socket.on("game:narrationReady", async (data) => {
@@ -524,13 +632,21 @@
     el.resultAnswer.textContent = data.celebrity;
     el.resultList.innerHTML = data.results
       .map(
-        (r) => `<div class="result-row ${r.correct ? "correct" : "wrong"}">
+        (r, i) => `<div class="result-row ${r.correct ? "correct" : "wrong"}" style="animation-delay:${i * 80}ms">
           <span>${escapeHtml(r.name)}</span>
           <span>${r.guess ? '"' + escapeHtml(r.guess) + '"' : "(cevap yok)"}</span>
           <span class="result-badge">${r.correct ? "+1 ✓" : "✗"}</span>
         </div>`
       )
       .join("");
+
+    const anyCorrect = data.results.some((r) => r.correct);
+    el.resultCelebration.classList.toggle("hidden", !anyCorrect);
+    if (anyCorrect) {
+      el.resultCelebration.style.animation = "none";
+      void el.resultCelebration.offsetWidth;
+      el.resultCelebration.style.animation = "";
+    }
     stopCountdown();
   });
 
