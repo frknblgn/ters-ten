@@ -123,7 +123,7 @@
         <div id="celebrity-name" class="celebrity-name">-</div>
         <button id="btn-record-narration" class="btn btn-record">🔴 Kaydı Başlat</button>
         <div id="narration-grace" class="hidden">
-          <p class="muted small">Kayıt tamam! <strong id="narration-grace-seconds">5</strong> saniye içinde otomatik gönderilecek.</p>
+          <p class="muted small">Kayıt tamam! <strong id="narration-grace-seconds">3</strong> saniye içinde otomatik gönderilecek.</p>
           <div class="guess-form">
             <button id="btn-rerecord-narration" class="btn btn-secondary">🔁 Tekrar Kaydet</button>
             <button id="btn-send-now-narration" class="btn btn-primary">✓ Şimdi Gönder</button>
@@ -132,16 +132,13 @@
         <p id="narrator-status" class="muted small"></p>
       </div>
 
-      <div id="phase-listen-reversed" class="game-phase hidden">
-        <div class="eyebrow">TERSTEN SESİ DİNLE</div>
-        <p class="muted">Anlatıcının söylediği ismin tersten versiyonunu duyacaksın. Dikkatle dinle!</p>
-        <button id="btn-replay-reversed" class="btn btn-secondary">🔁 Tekrar Dinle</button>
-      </div>
-
       <div id="phase-mimic" class="game-phase hidden">
-        <div class="eyebrow">DUYDUĞUN GİBİ TEKRARLA (TERSTEN)</div>
-        <p class="muted">Duyduğun sesi birebir taklit etmeye çalış, aynı şekilde kaydet.</p>
-        <button id="btn-record-mimic" class="btn btn-record">🔴 Taklit Kaydını Başlat</button>
+        <div class="eyebrow">TERSTEN SESİ DİNLE VE TAKLİT ET</div>
+        <p class="muted">Anlatıcının söylediği ismin tersten versiyonunu dinle, sonra duyduğun gibi taklit ederek kaydet.</p>
+        <button id="btn-replay-reversed" class="btn btn-secondary">🔁 Tekrar Dinle (<span id="replay-reversed-count">2</span> hakkın kaldı)</button>
+        <div style="margin-top:16px;">
+          <button id="btn-record-mimic" class="btn btn-record">🔴 Taklit Kaydını Başlat</button>
+        </div>
         <p id="mimic-status" class="muted small"></p>
       </div>
 

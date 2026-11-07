@@ -134,12 +134,27 @@ const TersAudio = (() => {
     return playAudioBuffer(buf);
   }
 
+  // Only one clip plays at a time: starting a new one stops whatever is
+  // currently playing, so repeated "replay" clicks never stack/overlap.
+  let activeSource = null;
+  function stopPlayback() {
+    if (activeSource) {
+      try { activeSource.onended = null; activeSource.stop(); } catch (e) {}
+      activeSource = null;
+    }
+  }
+
   function playAudioBuffer(audioBuffer) {
+    stopPlayback();
     return new Promise((resolve) => {
       const source = ctx().createBufferSource();
       source.buffer = audioBuffer;
       source.connect(ctx().destination);
-      source.onended = resolve;
+      source.onended = () => {
+        if (activeSource === source) activeSource = null;
+        resolve();
+      };
+      activeSource = source;
       source.start();
     });
   }
@@ -189,6 +204,7 @@ const TersAudio = (() => {
     audioBufferToWav,
     playArrayBuffer,
     playAudioBuffer,
+    stopPlayback,
     recordAndReverse,
     createLevelMeter,
   };

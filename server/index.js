@@ -65,6 +65,7 @@ function startNextTurn(room) {
     celebrity,
     phase: "narrating",
     guesses: new Map(),
+    mimicDone: new Set(),
     timer: null,
   };
 
@@ -90,6 +91,21 @@ function startNextTurn(room) {
   }, room.settings.timing.narrate * 1000 + 1500);
 
   broadcastRoom(room);
+}
+
+function beginGuessPhase(room) {
+  const turn = room.currentTurn;
+  if (!turn || turn.phase === "guessing") return;
+  clearTurnTimer(room);
+  turn.phase = "guessing";
+
+  const guessMs = room.settings.timing.guess * 1000;
+  const deadline = Date.now() + guessMs;
+  io.to(room.code).emit("game:guessPhaseStart", { deadline });
+
+  room.currentTurn.timer = setTimeout(() => {
+    finalizeTurn(room);
+  }, guessMs + 1000);
 }
 
 function finalizeTurn(room) {
@@ -201,30 +217,44 @@ io.on("connection", (socket) => {
     if (turn.phase !== "narrating" || turn.narratorId !== socket.id) return;
     if (!payload?.audio) return;
 
-    turn.phase = "responding";
+    turn.phase = "mimicking";
     clearTurnTimer(room);
 
     const audioBuffer = Buffer.isBuffer(payload.audio) ? payload.audio : Buffer.from(payload.audio);
-    const respondMs = (room.settings.timing.mimic + room.settings.timing.guess) * 1000;
-    const deadline = Date.now() + respondMs;
+    const mimicMs = room.settings.timing.mimic * 1000;
+    const deadline = Date.now() + mimicMs;
 
     socket.to(room.code).emit("game:narrationReady", {
       audio: audioBuffer,
       mimeType: payload.mimeType || "audio/wav",
-      timing: room.settings.timing,
       deadline,
     });
 
     room.currentTurn.timer = setTimeout(() => {
-      finalizeTurn(room);
-    }, respondMs + 1000);
+      beginGuessPhase(room);
+    }, mimicMs + 1000);
+  });
+
+  socket.on("turn:mimicDone", () => {
+    const room = manager.get(socket.data.roomCode);
+    if (!room || !room.currentTurn) return;
+    const turn = room.currentTurn;
+    if (turn.phase !== "mimicking" || turn.narratorId === socket.id) return;
+    if (!room.players.has(socket.id)) return;
+
+    turn.mimicDone.add(socket.id);
+
+    const listenerCount = room.playerCount - 1;
+    if (turn.mimicDone.size >= listenerCount && listenerCount > 0) {
+      beginGuessPhase(room);
+    }
   });
 
   socket.on("turn:submitGuess", (payload) => {
     const room = manager.get(socket.data.roomCode);
     if (!room || !room.currentTurn) return;
     const turn = room.currentTurn;
-    if (turn.phase !== "responding" || turn.narratorId === socket.id) return;
+    if (turn.phase !== "guessing" || turn.narratorId === socket.id) return;
     if (!room.players.has(socket.id)) return;
 
     turn.guesses.set(socket.id, (payload?.guess || "").slice(0, 60));

@@ -52,8 +52,8 @@
     btnRerecordNarration: $("#btn-rerecord-narration"),
     btnSendNowNarration: $("#btn-send-now-narration"),
     narratorStatus: $("#narrator-status"),
-    phaseListenReversed: $("#phase-listen-reversed"),
     btnReplayReversed: $("#btn-replay-reversed"),
+    replayReversedCount: $("#replay-reversed-count"),
     phaseMimic: $("#phase-mimic"),
     btnRecordMimic: $("#btn-record-mimic"),
     mimicStatus: $("#mimic-status"),
@@ -510,7 +510,7 @@
       el.narrationGrace.classList.remove("hidden");
       el.narratorStatus.textContent = "";
 
-      let remaining = 5;
+      let remaining = 3;
       el.narrationGraceSeconds.textContent = remaining;
       graceInterval = setInterval(() => {
         remaining -= 1;
@@ -546,7 +546,11 @@
 
   socket.on("game:narrationReady", async (data) => {
     el.phaseWaiting.classList.add("hidden");
-    el.phaseListenReversed.classList.remove("hidden");
+    el.phaseMimic.classList.remove("hidden");
+    el.btnRecordMimic.classList.remove("hidden", "recording");
+    el.btnRecordMimic.disabled = false;
+    el.btnRecordMimic.textContent = "🔴 Taklit Kaydını Başlat";
+    el.mimicStatus.textContent = "";
 
     const arrBuf = data.audio instanceof ArrayBuffer ? data.audio : data.audio.buffer.slice(data.audio.byteOffset, data.audio.byteOffset + data.audio.byteLength);
     try {
@@ -554,52 +558,101 @@
     } catch (e) {
       reversedNarrationBuffer = null;
     }
-    if (reversedNarrationBuffer) TersAudio.playAudioBuffer(reversedNarrationBuffer);
+
+    function playReversed() {
+      if (reversedNarrationBuffer) TersAudio.playAudioBuffer(reversedNarrationBuffer);
+    }
+
+    let playsLeft = 2; // 1 auto-play + 2 manual replays = 3 listens total
+    el.replayReversedCount.textContent = playsLeft;
+    el.btnReplayReversed.disabled = false;
+    playReversed();
 
     el.btnReplayReversed.onclick = () => {
-      if (reversedNarrationBuffer) TersAudio.playAudioBuffer(reversedNarrationBuffer);
+      if (playsLeft <= 0) return;
+      playsLeft -= 1;
+      el.replayReversedCount.textContent = playsLeft;
+      playReversed();
+      if (playsLeft <= 0) el.btnReplayReversed.disabled = true;
     };
 
-    const mimicMs = data.timing.mimic * 1000;
-    const guessMs = data.timing.guess * 1000;
+    startCountdown(data.deadline, "Taklit");
 
-    setTimeout(() => startMimicPhase(mimicMs, guessMs), 1200);
-  });
+    let mimicDoneSent = false;
 
-  function startMimicPhase(mimicMs, guessMs) {
-    el.phaseListenReversed.classList.add("hidden");
-    el.phaseMimic.classList.remove("hidden");
-    el.btnRecordMimic.disabled = false;
-    el.btnRecordMimic.textContent = "🔴 Taklit Kaydını Başlat";
-    el.mimicStatus.textContent = "Duyduğun sesi birebir taklit et.";
-    startCountdown(Date.now() + mimicMs, "Taklit");
-
-    el.btnRecordMimic.onclick = async () => {
-      el.btnRecordMimic.disabled = true;
+    async function beginMimicRecording() {
+      el.btnRecordMimic.disabled = false;
       el.btnRecordMimic.classList.add("recording");
-      el.btnRecordMimic.textContent = "🔴 Kaydediliyor...";
+      el.btnRecordMimic.textContent = "✅ Taklit Tamamla";
+      el.btnRecordMimic.onclick = stopMimicRecording;
+      el.mimicStatus.textContent = "Konuşuyorsun... bitirince tamamlaya bas.";
+
+      let stream;
       try {
-        const stream = await TersAudio.getMicStream();
-        const blob = await TersAudio.recordFor(stream, mimicMs);
-        const myBuffer = await TersAudio.blobToAudioBuffer(blob);
-        mimicReversedBuffer = TersAudio.reverseBuffer(myBuffer);
-        el.btnRecordMimic.classList.remove("recording");
-        startGuessPhase(guessMs);
+        stream = await TersAudio.getMicStream();
       } catch (e) {
         el.mimicStatus.textContent = "Mikrofon hatası: " + (e.message || e);
-        el.btnRecordMimic.disabled = false;
-        el.btnRecordMimic.classList.remove("recording");
-        el.btnRecordMimic.textContent = "🔴 Taklit Kaydını Başlat";
+        resetMimicButton();
+        return;
       }
-    };
-  }
 
-  function startGuessPhase(guessMs) {
-    el.phaseMimic.classList.add("hidden");
+      TersAudio.recordFor(stream, 120000)
+        .then(onMimicStopped)
+        .catch((e) => {
+          el.mimicStatus.textContent = "Kayıt hatası: " + (e.message || e);
+          resetMimicButton();
+        });
+    }
+
+    function resetMimicButton() {
+      el.btnRecordMimic.disabled = false;
+      el.btnRecordMimic.classList.remove("recording");
+      el.btnRecordMimic.textContent = "🔴 Taklit Kaydını Başlat";
+      el.btnRecordMimic.onclick = beginMimicRecording;
+    }
+
+    function stopMimicRecording() {
+      TersAudio.stopRecording();
+      el.btnRecordMimic.disabled = true;
+      el.btnRecordMimic.textContent = "⏳ İşleniyor...";
+    }
+
+    async function onMimicStopped(blob) {
+      if (mimicDoneSent) return;
+      try {
+        const myBuffer = await TersAudio.blobToAudioBuffer(blob);
+        mimicReversedBuffer = TersAudio.reverseBuffer(myBuffer);
+      } catch (e) {
+        mimicReversedBuffer = null;
+      }
+      finishMimic();
+    }
+
+    function finishMimic() {
+      if (mimicDoneSent) return;
+      mimicDoneSent = true;
+      TersAudio.stopRecording();
+      socket.emit("turn:mimicDone");
+      el.phaseMimic.classList.add("hidden");
+      el.phaseWaiting.classList.remove("hidden");
+      el.waitingText.textContent = "Taklidin tamam! Diğer oyuncular bekleniyor...";
+    }
+
+    el.btnRecordMimic.onclick = beginMimicRecording;
+  });
+
+  socket.on("game:guessPhaseStart", (data) => {
+    if (turnContext?.narratorId === myId) return; // narrator just waits for the result
+    TersAudio.stopRecording();
+    startGuessPhase(data.deadline);
+  });
+
+  function startGuessPhase(deadline) {
+    resetGamePhases();
     el.phaseGuess.classList.remove("hidden");
     el.inputGuess.value = "";
     el.guessStatus.textContent = "";
-    startCountdown(Date.now() + guessMs, "Tahmin");
+    startCountdown(deadline, "Tahmin");
 
     if (mimicReversedBuffer) TersAudio.playAudioBuffer(mimicReversedBuffer);
     el.btnReplayMimic.onclick = () => {
@@ -621,7 +674,9 @@
     el.btnSubmitGuess.disabled = false;
     el.inputGuess.disabled = false;
 
-    guessPhaseAutoSubmit = setTimeout(doSubmit, guessMs + 300);
+    clearTimeout(guessPhaseAutoSubmit);
+    const remainMs = Math.max(500, deadline - Date.now() + 300);
+    guessPhaseAutoSubmit = setTimeout(doSubmit, remainMs);
   }
   let guessPhaseAutoSubmit = null;
 
@@ -662,7 +717,7 @@
   el.btnBackToLobby.addEventListener("click", () => socket.emit("room:returnToLobby"));
 
   function resetGamePhases() {
-    [el.phaseWaiting, el.phaseNarrator, el.phaseListenReversed, el.phaseMimic, el.phaseGuess, el.phaseResult].forEach((p) =>
+    [el.phaseWaiting, el.phaseNarrator, el.phaseMimic, el.phaseGuess, el.phaseResult].forEach((p) =>
       p.classList.add("hidden")
     );
   }
